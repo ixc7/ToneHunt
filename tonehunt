@@ -1,0 +1,143 @@
+#!/usr/local/bin/bash
+
+# get user input
+   [[ ${#*} -lt 1 ]] && 
+  read -p "search: " INPUT ||
+  INPUT="${@}"
+
+# query (input escaped with '+')
+[[ ${#INPUT} -lt 1 ]] && 
+  exit 0 || 
+  QUERY="$(echo ${INPUT} | tr ' ' '+')"
+
+# get category (defaults to Amp)
+read -p "Filter (Amp, Pedal, IR): " FILTER
+[[ ${#FILTER} -lt 1 ]] && FILTER="Amp"
+
+PAGE=0
+BASE="https://tonehunt.org"
+URL="${BASE}/search-results?search=${QUERY}&filter=${FILTER}&page=${PAGE}"
+
+# get the page
+RESULTS=$(curl "${URL}" -s)
+
+# number of pages
+PAGES=$(echo "${RESULTS}" | pup --color 'ul[aria-label=Pagination] li:nth-last-child(2) text{}')
+[[ "${#PAGES}" -eq 0 ]] && PAGES=1
+
+# IMPORTANT: quote outside of array to prevent splitting
+
+# result titles
+declare -a LIST="($(
+  echo "${RESULTS}" | 
+  pup --color 'h3.font-satoshi-bold json{}' |
+  jq '.[] .title'
+))"
+
+# result urls
+declare -a LINKS="($(
+  echo "${RESULTS}" | 
+  pup '.bg-tonehunt-gray-medium a.flex-1[href] json{}' |
+  jq '.[].href'
+))"
+
+# exit if nothing found
+[[ ${#LIST[@]} -eq 0 ]] && 
+  echo -e "\nNo results\n" &&
+  exit 0
+
+# render UI (interactive/scrollable list)
+renderUI () {  
+  local pos=0
+  local len=0
+  
+  # utils
+  cursorUp () { echo -ne "\x1b[1A\r"; }
+  cursorDown () { echo -ne "\x1b[1B\r"; }
+  cursorTop () { tput cup 0 0; }
+  cursorBottom () { tput cup $((LINES - 4)); }
+  boldText () { echo -ne "\x1b[1m${@}\x1b[0m\r"; }
+  printListItem () { ${@} "$((pos + 1)): ${LIST[pos]} ($(echo -ne "${LINKS[pos]}" | cut -f 2 -d '/'))\r"; }
+
+  # render the list
+  ns
+  cursorBottom
+  echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n"
+  cursorTop
+
+  for i in "${!LIST[@]}"; do
+    # change pos to ${i} so correct link/username is rendered
+    pos=${i}
+
+    printListItem echo -e
+    ((len += 1))
+  done
+  
+  # reset pos
+  pos=0
+
+  cursorTop
+  printListItem boldText
+
+  # detect up/down/enter keypresses
+  while true; do
+    read -r -sn1 keypress
+
+    case ${keypress} in
+      # up key
+      "A")
+        if [[ pos -gt 0 ]]; then
+          # move up/highlight previous selection in list
+          
+          printListItem echo -ne
+          ((pos -= 1))
+          cursorUp
+        else
+          # loop back to bottom if at start of list
+
+          printListItem echo -ne
+          pos=$((len - 1))
+          tput cup $((len - 1)) 0
+        fi 
+
+        printListItem boldText
+      ;; 
+
+      # down key
+      "B")
+        if [[ pos -lt $((len - 1)) ]]; then
+          # move down/highlight next selection in list
+
+          printListItem echo -ne
+          ((pos += 1))
+          cursorDown
+        else
+          # loop back to top if at end of list
+
+          printListItem echo -ne
+          pos=0
+          cursorTop
+        fi 
+        
+        printListItem boldText
+      ;; 
+      
+      # enter key
+      "" )
+        # move to bottom, print selected item and exit
+        
+        cursorBottom
+        echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
+        open "${BASE}${LINKS[pos]}"
+        break
+      ;;
+    esac
+  done
+}
+
+renderUI
+
+# ns && echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c | pup 'h5:first-child + p json{}' | jq .[0].text)"
+
+# TODO: tags (https://tonehunt.org/all?filter=ir&tags=metal)
+
