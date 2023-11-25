@@ -5,7 +5,7 @@ cs() {
   echo -ne "\x1Bc\x1b[3J" && clear
 }
 
-trap cs EXIT
+# trap cs EXIT
 
 getInput() {
   INPUT=""
@@ -28,6 +28,8 @@ getInput() {
 getInput "${@}"
 
 searchToneHunt() {
+  # echo -e "\x1b[2KSearching..."
+
   # get HTML
   PAGE=${1}
   BASE="https://tonehunt.org"
@@ -75,7 +77,7 @@ searchToneHunt() {
     # render the list
     cs
     cursorBottom
-    echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n(N):next (P):prev (Q):quit (S):new (Up/Down):move (Enter):open"
+    echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n(N):next (P):prev (Q):quit (S):new (I):info (Up/Down):move (Enter):open"
     cursorTop
 
     for i in "${!LIST[@]}"; do
@@ -133,9 +135,20 @@ searchToneHunt() {
       # open selected URL and exit (enter)
       "")
         cursorBottom
+        cs
         echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
         open "${BASE}${LINKS[pos]}"
         break
+        ;;
+
+      # show description
+      "i")
+        tput smcup
+        echo -e "$(boldText "${LIST[pos]}")\n\n$(curl -s "${BASE}${LINKS[pos]}" | pup ':contains("Description") + p text{}')\n"
+        cursorBottom
+        echo
+        read -p "press ENTER to go back"
+        tput rmcup
         ;;
 
       # show next page
@@ -170,7 +183,8 @@ searchToneHunt() {
 
       # quit
       "q")
-        exit 0
+        cs
+        break
         ;;
 
       # new search
@@ -189,10 +203,6 @@ searchToneHunt() {
 }
 
 searchToneHunt 0
-
-# TODO: descriptions
-# echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c |
-# pup 'h5:first-child + p json{}' | jq .[0].text)"
 
 # TODO: tags
 # https://tonehunt.org/all?filter=ir&tags=metal

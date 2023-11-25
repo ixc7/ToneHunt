@@ -1,4 +1,4 @@
 #!/usr/local/bin/bash
 
-shfmt --write --indent 2 tonehunt
+shfmt --write --indent 2 tonehunt && bat -p tonehunt
 
