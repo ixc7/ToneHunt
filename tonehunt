@@ -69,7 +69,7 @@ searchToneHunt() {
 		# render the list
 		cs
 		cursorBottom
-		echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n"
+    echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n(n)ext (p)rev (q)uit"
 		cursorTop
 
 		for i in "${!LIST[@]}"; do
@@ -136,14 +136,26 @@ searchToneHunt() {
 
 			# n key (next page)
 			"n")
-				searchToneHunt $((PAGE + 1))
-				break
+        if [[ $((PAGE + 1)) -lt ${PAGES} ]]; then
+          searchToneHunt $((PAGE + 1))
+          break
+        else
+          cursorBottom
+          echo -e "\nAlready at last page\n"
+          cursorTop
+        fi
 				;;
 
 			# p key (prev page)
 			"p")
-				searchToneHunt $((PAGE - 1))
-				break
+        if [[ ${PAGE} -gt 0 ]]; then
+          searchToneHunt $((PAGE - 1))
+          break
+        else
+          cursorBottom
+          echo -e "\nAlready at first page\n"
+          cursorTop
+        fi
 				;;
 
 			# q key (quit)
