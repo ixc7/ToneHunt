@@ -1,5 +1,11 @@
 #!/usr/local/bin/bash
 
+ns () {
+  echo -ne "\x1Bc\x1b[3J" && clear
+}
+
+trap ns EXIT
+
 # get user input
 [[ ${#*} -lt 1 ]] && 
   while [[ ${#INPUT} -lt 1 ]]; do
@@ -18,16 +24,15 @@ PAGE=0
 BASE="https://tonehunt.org"
 URL="${BASE}/search-results?search=${INPUT}${FILTER}&page=${PAGE}"
 
-# get the page
+# request
 RESULTS=$(curl "${URL}" -s)
 
 # number of pages
 PAGES=$(echo "${RESULTS}" | pup --color 'ul[aria-label=Pagination] li:nth-last-child(2) text{}')
 [[ "${#PAGES}" -eq 0 ]] && PAGES=1
 
-# IMPORTANT: quote outside of array to prevent splitting
-
 # result titles
+# quote array to prevent splitting
 declare -a LIST="($(
   echo "${RESULTS}" | 
   pup --color 'h3.font-satoshi-bold json{}' |
@@ -46,7 +51,8 @@ declare -a LINKS="($(
   echo -e "\nNo results\n" &&
   exit 0
 
-# render UI (interactive/scrollable list)
+# render UI
+# scrollable list, opens selected url in browser
 renderUI () {  
   local pos=0
   local len=0
