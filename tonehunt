@@ -2,141 +2,148 @@
 
 # clear scrollback
 cs() {
-	echo -ne "\x1Bc\x1b[3J" && clear
+  echo -ne "\x1Bc\x1b[3J" && clear
 }
 
 trap cs EXIT
 
-# get user input
-[[ ${#*} -lt 1 ]] &&
-	while [[ ${#INPUT} -lt 1 ]]; do
-		read -p "Search: " INPUT
-	done ||
-	INPUT="${@}"
+getInput() {
+  INPUT=""
 
-# escape spaces with '+'
-INPUT="$(echo ${INPUT} | tr ' ' '+')"
+  # get user input
+  [[ ${#*} -lt 1 ]] &&
+    while [[ ${#INPUT} -lt 1 ]]; do
+      read -p "Search: " INPUT
+    done ||
+    INPUT="${@}"
 
-# filter by category
-read -p "Optional: Filter (Amp, Pedal, IR): " FILTER
-[[ ${#FILTER} -lt 1 ]] && FILTER="" || FILTER="&filter=${FILTER}"
+  # escape spaces with '+'
+  INPUT="$(echo ${INPUT} | tr ' ' '+')"
+
+  # filter by category
+  read -p "(Optional):filter (Amp, Pedal, IR): " FILTER
+  [[ ${#FILTER} -lt 1 ]] && FILTER="" || FILTER="&filter=${FILTER}"
+}
+
+getInput "${@}"
 
 searchToneHunt() {
-	# get HTML
-	PAGE=${1}
-	BASE="https://tonehunt.org"
-	URL="${BASE}/search-results?search=${INPUT}${FILTER}&page=${PAGE}"
-	RESULTS=$(curl "${URL}" -s)
+  # get HTML
+  PAGE=${1}
+  BASE="https://tonehunt.org"
+  URL="${BASE}/search-results?search=${INPUT}${FILTER}&page=${PAGE}"
+  RESULTS=$(curl "${URL}" -s)
 
-	# number of pages
-	PAGES=$(echo "${RESULTS}" | pup --color 'ul[aria-label=Pagination] li:nth-last-child(2) text{}')
-	[[ "${#PAGES}" -eq 0 ]] && PAGES=1
+  # number of pages
+  PAGES=$(echo "${RESULTS}" | pup --color 'ul[aria-label=Pagination] li:nth-last-child(2) text{}')
+  [[ "${#PAGES}" -eq 0 ]] && PAGES=1
 
-	# result titles
-	# quote array to prevent splitting
-	declare -a LIST="($(
-		echo "${RESULTS}" |
-			pup --color 'h3.font-satoshi-bold json{}' |
-			jq '.[] .title'
-	))"
+  # result titles
+  # (quote array to prevent splitting)
+  declare -a LIST="($(
+    echo "${RESULTS}" |
+      pup --color 'h3.font-satoshi-bold json{}' |
+      jq '.[] .title'
+  ))"
 
-	# result urls
-	declare -a LINKS="($(
-		echo "${RESULTS}" |
-			pup '.bg-tonehunt-gray-medium a.flex-1[href] json{}' |
-			jq '.[].href'
-	))"
+  # result urls
+  declare -a LINKS="($(
+    echo "${RESULTS}" |
+      pup '.bg-tonehunt-gray-medium a.flex-1[href] json{}' |
+      jq '.[].href'
+  ))"
 
-	# exit if nothing found
-	[[ ${#LIST[@]} -eq 0 ]] &&
-		echo -e "\nNo results\n" &&
-		exit 0
+  # exit if nothing found
+  [[ ${#LIST[@]} -eq 0 ]] &&
+    echo -e "\nNo results\n" &&
+    exit 0
 
-	# render scrollable list of results
-	# opens selected url in browser
-	renderUI() {
-		local pos=0
-		local len=0
+  # render scrollable list of results
+  # opens selected url in browser
+  renderUI() {
+    local pos=0
+    local len=0
 
-		# utils
-		cursorUp() { echo -ne "\x1b[1A\r"; }
-		cursorDown() { echo -ne "\x1b[1B\r"; }
-		cursorTop() { tput cup 0 0; }
-		cursorBottom() { tput cup $((LINES - 4)); }
-		boldText() { echo -ne "\x1b[1m${@}\x1b[0m\r"; }
-		printListItem() { ${@} "$((pos + 1)): ${LIST[pos]} ($(echo -ne "${LINKS[pos]}" | cut -f 2 -d '/'))\r"; }
+    # utils
+    cursorUp() { echo -ne "\x1b[1A\r"; }
+    cursorDown() { echo -ne "\x1b[1B\r"; }
+    cursorTop() { tput cup 0 0; }
+    cursorBottom() { tput cup $((LINES - 4)); }
+    boldText() { echo -ne "\x1b[1m${@}\x1b[0m\r"; }
+    printListItem() { ${@} "$((pos + 1)): ${LIST[pos]} ($(echo -ne "${LINKS[pos]}" | cut -f 2 -d '/'))\r"; }
 
-		# render the list
-		cs
-		cursorBottom
-    echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n(n)ext (p)rev (q)uit"
-		cursorTop
+    # render the list
+    cs
+    cursorBottom
+    echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n(N):next (P):prev (Q):quit (S):new (Up/Down):move (Enter):open"
+    cursorTop
 
-		for i in "${!LIST[@]}"; do
-			# change pos to ${i} so correct link/username combo is rendered
-			pos=${i}
+    for i in "${!LIST[@]}"; do
+      # change pos to ${i} so correct link/username combo is rendered
+      pos=${i}
+      printListItem echo -e
+      ((len += 1))
+    done
 
-			printListItem echo -e
-			((len += 1))
-		done
+    # reset pos
+    pos=0
+    cursorTop
+    printListItem boldText
 
-		# reset pos
-		pos=0
+    # listen for keypresses
+    while true; do
+      read -r -sn1 keypress
 
-		cursorTop
-		printListItem boldText
+      case ${keypress} in
 
-		# listen for up/down/enter keypress
-		while true; do
-			read -r -sn1 keypress
+      # select prev item (up)
+      "A")
+        if [[ pos -gt 0 ]]; then
+          # move up/highlight previous selection in list
+          printListItem echo -ne
+          ((pos -= 1))
+          cursorUp
+        else
+          # loop to bottom if at start of list
+          printListItem echo -ne
+          pos=$((len - 1))
+          tput cup $((len - 1)) 0
+        fi
 
-			case ${keypress} in
-			# up key
-			"A")
-				if [[ pos -gt 0 ]]; then
-					# move up/highlight previous selection in list
-					printListItem echo -ne
-					((pos -= 1))
-					cursorUp
-				else
-					# loop to bottom if at start of list
-					printListItem echo -ne
-					pos=$((len - 1))
-					tput cup $((len - 1)) 0
-				fi
+        printListItem boldText
+        ;;
 
-				printListItem boldText
-				;;
+      # select next item (down)
+      "B")
+        if [[ pos -lt $((len - 1)) ]]; then
+          # move down/highlight next selection in list
+          printListItem echo -ne
+          ((pos += 1))
+          cursorDown
+        else
+          # loop to top if at end of list
+          printListItem echo -ne
+          pos=0
+          cursorTop
+        fi
 
-			# down key
-			"B")
-				if [[ pos -lt $((len - 1)) ]]; then
-					# move down/highlight next selection in list
-					printListItem echo -ne
-					((pos += 1))
-					cursorDown
-				else
-					# loop to top if at end of list
-					printListItem echo -ne
-					pos=0
-					cursorTop
-				fi
+        printListItem boldText
+        ;;
 
-				printListItem boldText
-				;;
+      # open selected URL and exit (enter)
+      "")
+        cursorBottom
+        echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
+        open "${BASE}${LINKS[pos]}"
+        break
+        ;;
 
-			# enter key
-			"")
-				# move to bottom, print selected item and exit
-				cursorBottom
-				echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
-				open "${BASE}${LINKS[pos]}"
-				break
-				;;
-
-			# n key (next page)
-			"n")
+      # show next page
+      "n")
         if [[ $((PAGE + 1)) -lt ${PAGES} ]]; then
+          cursorBottom
+          echo -e "\nLoading next page\n"
+          cursorTop
           searchToneHunt $((PAGE + 1))
           break
         else
@@ -144,11 +151,14 @@ searchToneHunt() {
           echo -e "\nAlready at last page\n"
           cursorTop
         fi
-				;;
+        ;;
 
-			# p key (prev page)
-			"p")
+      # show prev page
+      "p")
         if [[ ${PAGE} -gt 0 ]]; then
+          cursorBottom
+          echo -e "\nLoading previous page\n"
+          cursorTop
           searchToneHunt $((PAGE - 1))
           break
         else
@@ -156,17 +166,26 @@ searchToneHunt() {
           echo -e "\nAlready at first page\n"
           cursorTop
         fi
-				;;
+        ;;
 
-			# q key (quit)
-			"q")
-				exit 0
-				;;
-			esac
-		done
-	}
+      # quit
+      "q")
+        exit 0
+        ;;
 
-	renderUI
+      # new search
+      "s")
+        INPUT=""
+        cursorBottom
+        getInput
+        searchToneHunt 0
+        break
+        ;;
+      esac
+    done
+  }
+
+  renderUI
 }
 
 searchToneHunt 0
