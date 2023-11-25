@@ -1,22 +1,22 @@
 #!/usr/local/bin/bash
 
 # get user input
-   [[ ${#*} -lt 1 ]] && 
-  read -p "search: " INPUT ||
+[[ ${#*} -lt 1 ]] && 
+  while [[ ${#INPUT} -lt 1 ]]; do
+    read -p "Search: " INPUT
+  done ||
   INPUT="${@}"
 
-# query (input escaped with '+')
-[[ ${#INPUT} -lt 1 ]] && 
-  exit 0 || 
-  QUERY="$(echo ${INPUT} | tr ' ' '+')"
+# escape spaces with '+'
+INPUT="$(echo ${INPUT} | tr ' ' '+')"
 
-# get category (defaults to Amp)
-read -p "Filter (Amp, Pedal, IR): " FILTER
-[[ ${#FILTER} -lt 1 ]] && FILTER="Amp"
+# filter by category
+read -p "Optional: Filter (Amp, Pedal, IR): " FILTER
+[[ ${#FILTER} -lt 1 ]] && FILTER="" || FILTER="&filter=${FILTER}"
 
 PAGE=0
 BASE="https://tonehunt.org"
-URL="${BASE}/search-results?search=${QUERY}&filter=${FILTER}&page=${PAGE}"
+URL="${BASE}/search-results?search=${INPUT}${FILTER}&page=${PAGE}"
 
 # get the page
 RESULTS=$(curl "${URL}" -s)
@@ -137,7 +137,10 @@ renderUI () {
 
 renderUI
 
-# ns && echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c | pup 'h5:first-child + p json{}' | jq .[0].text)"
+# TODO: descriptions
+# echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c | 
+# pup 'h5:first-child + p json{}' | jq .[0].text)"
 
-# TODO: tags (https://tonehunt.org/all?filter=ir&tags=metal)
+# TODO: tags
+# https://tonehunt.org/all?filter=ir&tags=metal
 
