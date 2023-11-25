@@ -1,17 +1,18 @@
 #!/usr/local/bin/bash
 
-ns () {
-  echo -ne "\x1Bc\x1b[3J" && clear
+# clear scrollback
+cs() {
+	echo -ne "\x1Bc\x1b[3J" && clear
 }
 
-trap ns EXIT
+trap cs EXIT
 
 # get user input
-[[ ${#*} -lt 1 ]] && 
-  while [[ ${#INPUT} -lt 1 ]]; do
-    read -p "Search: " INPUT
-  done ||
-  INPUT="${@}"
+[[ ${#*} -lt 1 ]] &&
+	while [[ ${#INPUT} -lt 1 ]]; do
+		read -p "Search: " INPUT
+	done ||
+	INPUT="${@}"
 
 # escape spaces with '+'
 INPUT="$(echo ${INPUT} | tr ' ' '+')"
@@ -34,119 +35,113 @@ PAGES=$(echo "${RESULTS}" | pup --color 'ul[aria-label=Pagination] li:nth-last-c
 # result titles
 # quote array to prevent splitting
 declare -a LIST="($(
-  echo "${RESULTS}" | 
-  pup --color 'h3.font-satoshi-bold json{}' |
-  jq '.[] .title'
+	echo "${RESULTS}" |
+		pup --color 'h3.font-satoshi-bold json{}' |
+		jq '.[] .title'
 ))"
 
 # result urls
 declare -a LINKS="($(
-  echo "${RESULTS}" | 
-  pup '.bg-tonehunt-gray-medium a.flex-1[href] json{}' |
-  jq '.[].href'
+	echo "${RESULTS}" |
+		pup '.bg-tonehunt-gray-medium a.flex-1[href] json{}' |
+		jq '.[].href'
 ))"
 
 # exit if nothing found
-[[ ${#LIST[@]} -eq 0 ]] && 
-  echo -e "\nNo results\n" &&
-  exit 0
+[[ ${#LIST[@]} -eq 0 ]] &&
+	echo -e "\nNo results\n" &&
+	exit 0
 
-# render UI
-# scrollable list, opens selected url in browser
-renderUI () {  
-  local pos=0
-  local len=0
-  
-  # utils
-  cursorUp () { echo -ne "\x1b[1A\r"; }
-  cursorDown () { echo -ne "\x1b[1B\r"; }
-  cursorTop () { tput cup 0 0; }
-  cursorBottom () { tput cup $((LINES - 4)); }
-  boldText () { echo -ne "\x1b[1m${@}\x1b[0m\r"; }
-  printListItem () { ${@} "$((pos + 1)): ${LIST[pos]} ($(echo -ne "${LINKS[pos]}" | cut -f 2 -d '/'))\r"; }
+# render scrollable list of results
+# opens selected url in browser
+renderUI() {
+	local pos=0
+	local len=0
 
-  # render the list
-  ns
-  cursorBottom
-  echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n"
-  cursorTop
+	# utils
+	cursorUp() { echo -ne "\x1b[1A\r"; }
+	cursorDown() { echo -ne "\x1b[1B\r"; }
+	cursorTop() { tput cup 0 0; }
+	cursorBottom() { tput cup $((LINES - 4)); }
+	boldText() { echo -ne "\x1b[1m${@}\x1b[0m\r"; }
+	printListItem() { ${@} "$((pos + 1)): ${LIST[pos]} ($(echo -ne "${LINKS[pos]}" | cut -f 2 -d '/'))\r"; }
 
-  for i in "${!LIST[@]}"; do
-    # change pos to ${i} so correct link/username is rendered
-    pos=${i}
+	# render the list
+	cs
+	cursorBottom
+	echo -e "\nPage $((${PAGE} + 1)) of ${PAGES}\n"
+	cursorTop
 
-    printListItem echo -e
-    ((len += 1))
-  done
-  
-  # reset pos
-  pos=0
+	for i in "${!LIST[@]}"; do
+		# change pos to ${i} so correct link/username combo is rendered
+		pos=${i}
 
-  cursorTop
-  printListItem boldText
+		printListItem echo -e
+		((len += 1))
+	done
 
-  # detect up/down/enter keypresses
-  while true; do
-    read -r -sn1 keypress
+	# reset pos
+	pos=0
 
-    case ${keypress} in
-      # up key
-      "A")
-        if [[ pos -gt 0 ]]; then
-          # move up/highlight previous selection in list
-          
-          printListItem echo -ne
-          ((pos -= 1))
-          cursorUp
-        else
-          # loop back to bottom if at start of list
+	cursorTop
+	printListItem boldText
 
-          printListItem echo -ne
-          pos=$((len - 1))
-          tput cup $((len - 1)) 0
-        fi 
+	# listen for up/down/enter keypress
+	while true; do
+		read -r -sn1 keypress
 
-        printListItem boldText
-      ;; 
+		case ${keypress} in
+		# up key
+		"A")
+			if [[ pos -gt 0 ]]; then
+				# move up/highlight previous selection in list
+				printListItem echo -ne
+				((pos -= 1))
+				cursorUp
+			else
+				# loop to bottom if at start of list
+				printListItem echo -ne
+				pos=$((len - 1))
+				tput cup $((len - 1)) 0
+			fi
 
-      # down key
-      "B")
-        if [[ pos -lt $((len - 1)) ]]; then
-          # move down/highlight next selection in list
+			printListItem boldText
+			;;
 
-          printListItem echo -ne
-          ((pos += 1))
-          cursorDown
-        else
-          # loop back to top if at end of list
+		# down key
+		"B")
+			if [[ pos -lt $((len - 1)) ]]; then
+				# move down/highlight next selection in list
+				printListItem echo -ne
+				((pos += 1))
+				cursorDown
+			else
+				# loop to top if at end of list
+				printListItem echo -ne
+				pos=0
+				cursorTop
+			fi
 
-          printListItem echo -ne
-          pos=0
-          cursorTop
-        fi 
-        
-        printListItem boldText
-      ;; 
-      
-      # enter key
-      "" )
-        # move to bottom, print selected item and exit
-        
-        cursorBottom
-        echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
-        open "${BASE}${LINKS[pos]}"
-        break
-      ;;
-    esac
-  done
+			printListItem boldText
+			;;
+
+		# enter key
+		"")
+			# move to bottom, print selected item and exit
+			cursorBottom
+			echo -e "${LIST[pos]} - ${BASE}${LINKS[pos]}"
+			open "${BASE}${LINKS[pos]}"
+			break
+			;;
+		esac
+	done
 }
 
 renderUI
 
 # TODO: descriptions
-# echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c | 
+# echo -e "Description:\n$(curl -s https://tonehunt.org/Gingerbeard/3553442d-90e2-4341-b143-c449e8e00a2c |
 # pup 'h5:first-child + p json{}' | jq .[0].text)"
 
 # TODO: tags
 # https://tonehunt.org/all?filter=ir&tags=metal
-
